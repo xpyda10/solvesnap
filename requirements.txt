@@ -1,0 +1,4 @@
+# Python packages Vercel installs for the backend (api/index.py).
+# For running on your own computer, use backend/requirements.txt instead.
+fastapi>=0.110
+psycopg[binary]>=3.1
