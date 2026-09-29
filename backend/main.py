@@ -7,31 +7,42 @@ Run it with:  uvicorn main:app --reload
 Then open http://localhost:8000/docs to try the API in your browser.
 """
 
+import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-DB_PATH = Path(__file__).parent / "todos.db"
+# The tests point this at a temporary file so they never touch your real todos.
+DB_PATH = Path(os.environ.get("TODO_DB_PATH", Path(__file__).parent / "todos.db"))
 
 app = FastAPI(title="Todo API")
 
 # The React dev server forwards every /api request here (see
 # frontend/vite.config.js), so the browser only ever talks to one address.
 
+Priority = Literal["low", "medium", "high"]
+
 
 # ---------- Data shapes ----------
 
 class TodoCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    priority: Priority | None = None
+    due_date: date | None = None
 
 
 class TodoUpdate(BaseModel):
-    # Both fields are optional: send only what you want to change.
+    # Every field is optional: send only what you want to change.
+    # Sending "priority": null or "due_date": null clears that field.
     title: str | None = Field(default=None, min_length=1, max_length=200)
     completed: bool | None = None
+    priority: Priority | None = None
+    due_date: date | None = None
 
 
 class TodoReorder(BaseModel):
@@ -44,6 +55,8 @@ class Todo(BaseModel):
     title: str
     completed: bool
     position: int
+    priority: Priority | None
+    due_date: date | None
 
 
 # ---------- Database helpers ----------
@@ -67,10 +80,18 @@ def init_db():
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 title     TEXT    NOT NULL,
                 completed INTEGER NOT NULL DEFAULT 0,
-                position  INTEGER NOT NULL
+                position  INTEGER NOT NULL,
+                priority  TEXT,
+                due_date  TEXT
             )
             """
         )
+        # Databases created by the first version of the app lack the newer
+        # columns, so add them if they're missing (your old todos are kept).
+        columns = {r["name"] for r in db.execute("PRAGMA table_info(todos)")}
+        for name in ("priority", "due_date"):
+            if name not in columns:
+                db.execute(f"ALTER TABLE todos ADD COLUMN {name} TEXT")
 
 
 def row_to_todo(row: sqlite3.Row) -> Todo:
@@ -79,6 +100,8 @@ def row_to_todo(row: sqlite3.Row) -> Todo:
         title=row["title"],
         completed=bool(row["completed"]),
         position=row["position"],
+        priority=row["priority"],
+        due_date=row["due_date"],
     )
 
 
@@ -87,6 +110,13 @@ def fetch_todo(db: sqlite3.Connection, todo_id: int) -> Todo:
     if row is None:
         raise HTTPException(status_code=404, detail="Todo not found")
     return row_to_todo(row)
+
+
+def clean_title(title: str) -> str:
+    title = title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title cannot be empty")
+    return title
 
 
 init_db()
@@ -103,35 +133,47 @@ def list_todos():
 
 @app.post("/api/todos", response_model=Todo, status_code=201)
 def create_todo(payload: TodoCreate):
-    title = payload.title.strip()
-    if not title:
-        raise HTTPException(status_code=422, detail="Title cannot be empty")
+    title = clean_title(payload.title)
     with get_db() as db:
         # New todos go at the bottom of the list.
         next_pos = db.execute(
             "SELECT COALESCE(MAX(position), -1) + 1 FROM todos"
         ).fetchone()[0]
         cur = db.execute(
-            "INSERT INTO todos (title, completed, position) VALUES (?, 0, ?)",
-            (title, next_pos),
+            """
+            INSERT INTO todos (title, completed, position, priority, due_date)
+            VALUES (?, 0, ?, ?, ?)
+            """,
+            (
+                title,
+                next_pos,
+                payload.priority,
+                payload.due_date.isoformat() if payload.due_date else None,
+            ),
         )
         return fetch_todo(db, cur.lastrowid)
 
 
 @app.patch("/api/todos/{todo_id}", response_model=Todo)
 def update_todo(todo_id: int, payload: TodoUpdate):
+    # model_fields_set holds only the fields the request actually sent, so we
+    # can tell "leave the due date alone" apart from "clear the due date".
+    sent = payload.model_fields_set
+    changes = {}
+    if "title" in sent and payload.title is not None:
+        changes["title"] = clean_title(payload.title)
+    if "completed" in sent and payload.completed is not None:
+        changes["completed"] = int(payload.completed)
+    if "priority" in sent:
+        changes["priority"] = payload.priority
+    if "due_date" in sent:
+        changes["due_date"] = payload.due_date.isoformat() if payload.due_date else None
+
     with get_db() as db:
         fetch_todo(db, todo_id)  # 404 if it doesn't exist
-        if payload.title is not None:
-            title = payload.title.strip()
-            if not title:
-                raise HTTPException(status_code=422, detail="Title cannot be empty")
-            db.execute("UPDATE todos SET title = ? WHERE id = ?", (title, todo_id))
-        if payload.completed is not None:
-            db.execute(
-                "UPDATE todos SET completed = ? WHERE id = ?",
-                (int(payload.completed), todo_id),
-            )
+        for column, value in changes.items():
+            # column names come from the fixed list above, never from the user
+            db.execute(f"UPDATE todos SET {column} = ? WHERE id = ?", (value, todo_id))
         return fetch_todo(db, todo_id)
 
 

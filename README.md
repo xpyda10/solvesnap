@@ -7,12 +7,16 @@ A simple todo list app:
 
 ## Features
 
-- Add todos
-- Check them off (and uncheck)
-- Reorder them by dragging, or with the ▲ ▼ buttons
-- Double-click a todo to rename it (Enter saves, Esc cancels)
-- Delete a todo, or clear all finished ones at once
-- Filter by All / Active / Done
+- Add todos, with an optional **priority** (High / Medium / Low) and **due date**
+- Due dates read naturally: "Today", "Tomorrow", "Friday", "3 days overdue"
+- Check todos off (and uncheck them)
+- Reorder by dragging, or with the up/down arrows (shown when you hover a todo)
+- Edit a todo's text, priority or date (pencil button, or double-click it)
+- Delete a todo or clear all finished ones, with **Undo** for 5 seconds
+- Filter by All / Active / Done, and **search** by text
+- A progress ring shows how much of your list is done
+- Keyboard shortcuts: `N` jumps to "Add a todo", `/` jumps to search
+- Light and dark mode (follows your computer's setting) and a layout that works on phones
 - Your list is saved, so it's still there after a restart
 
 ## What you need installed
@@ -48,6 +52,16 @@ Bonus: open **http://localhost:8000/docs** to see and try the backend API direct
 
 To stop either server, press `Ctrl + C` in its terminal.
 
+## Running the tests
+
+The backend has automated tests that check every API route. With the backend's
+Python environment active:
+
+```bash
+cd backend
+pytest
+```
+
 ## How it fits together
 
 ```
@@ -60,7 +74,7 @@ The React dev server forwards any request starting with `/api` to FastAPI
 | Method | URL                | What it does                              |
 | ------ | ------------------ | ----------------------------------------- |
 | GET    | `/api/todos`       | List all todos, in order                  |
-| POST   | `/api/todos`       | Add a todo: `{"title": "..."}`            |
-| PATCH  | `/api/todos/{id}`  | Change `title` and/or `completed`         |
+| POST   | `/api/todos`       | Add a todo: `{"title": "...", "priority": "high", "due_date": "2026-10-01"}` (only `title` is required) |
+| PATCH  | `/api/todos/{id}`  | Change any of `title`, `completed`, `priority`, `due_date` (send `null` to clear the last two) |
 | DELETE | `/api/todos/{id}`  | Delete a todo                             |
 | PUT    | `/api/todos/order` | Save a new order: `{"ids": [3, 1, 2]}`    |

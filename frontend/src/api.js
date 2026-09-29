@@ -13,13 +13,16 @@ async function request(path, options = {}) {
 
 export const getTodos = () => request('/todos')
 
-export const addTodo = (title) =>
-  request('/todos', { method: 'POST', body: JSON.stringify({ title }) })
+// todo is { title, priority, due_date }; only title is required.
+export const addTodo = (todo) =>
+  request('/todos', { method: 'POST', body: JSON.stringify(todo) })
 
 export const updateTodo = (id, changes) =>
   request(`/todos/${id}`, { method: 'PATCH', body: JSON.stringify(changes) })
 
-export const deleteTodo = (id) => request(`/todos/${id}`, { method: 'DELETE' })
+// keepalive lets the request finish even if the page is closing.
+export const deleteTodo = (id) =>
+  request(`/todos/${id}`, { method: 'DELETE', keepalive: true })
 
 export const reorderTodos = (ids) =>
   request('/todos/order', { method: 'PUT', body: JSON.stringify({ ids }) })
