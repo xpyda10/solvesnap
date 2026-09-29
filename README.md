@@ -62,6 +62,23 @@ cd backend
 pytest
 ```
 
+## Putting it online with Vercel
+
+The repo is already set up for [Vercel](https://vercel.com) (`vercel.json`, `api/index.py`
+and the root `requirements.txt`). On Vercel the React app is served as a website and the
+FastAPI backend runs as a Python function at `/api/...`.
+
+Vercel can't keep files between requests, so the online version needs a real database:
+
+1. In Vercel, click **Add New → Project**, import this repo, and click **Deploy**
+   (leave every setting as it is; `vercel.json` takes care of them).
+2. Open the project's **Storage** tab, click **Create Database**, choose **Neon** (Postgres),
+   and connect it to this project. This adds a `DATABASE_URL` setting automatically.
+3. Go to **Deployments**, open the ⋯ menu on the latest one and click **Redeploy**.
+
+Until a database is connected, the online app still works, but its todos disappear often.
+On your own computer nothing changes: without `DATABASE_URL`, the app uses `backend/todos.db`.
+
 ## How it fits together
 
 ```
